@@ -1,10 +1,15 @@
-import pytest
-import os
-import pandas as pd
-import riptable as rt
-
+import builtins # Necessary because of the "from riptable import *" below.
 from enum import IntEnum
+import operator
+import os
+from typing import Callable, Sequence, Tuple, TypeVar, Union
+
+import pandas as pd
+
+import pytest
 from numpy.testing import assert_array_equal
+
+import riptable as rt
 from riptable import *
 from riptable import save_sds, load_sds
 from riptable import FastArray, Categorical, CatZero
@@ -18,7 +23,7 @@ from riptable.rt_enum import (
     DisplayColumnColors,
 )
 from riptable.rt_enum import CategoryMode, TypeRegister
-from riptable.rt_numpy import isnan, isnotnan, arange, ones
+from riptable.rt_numpy import isnan, arange, ones
 from riptable.tests.test_utils import (
     get_categorical_data_factory_method,
     get_all_categorical_data,
@@ -70,6 +75,220 @@ list_true_unicode = [u'b\u2082', u'b\u2082', u'a\u2082', u'd\u2082', u'c\u2082']
 decision_dict = dict(zip(LikertDecision.__members__.keys(), [int(v) for v in LikertDecision.__members__.values()],))
 
 
+PythonScalar = Union[int, float, str, bytes, bool]
+
+def strict_tuple_comparison(
+    compare_func: callable,
+    x: Union[rt.Categorical, Tuple[PythonScalar, ...]],
+    y: Union[rt.Categorical, Tuple[PythonScalar, ...]]
+) -> np.ndarray:
+    """
+    Test helper function implementing a lexicographically-ordered (tuple-style) comparison
+    between a `rt.Categorical` or tuple of scalars and another `rt.Categorical` or tuple of scalars.
+
+    When this function is used to compare a tuple of scalars with an `rt.Categorical`, a numpy-style
+    broadcast is performed so the tuple is compared against each element of the `Categorical`.
+
+    .. warning::
+        This function is designed to be used as a reference/comparison when implementing unit tests.
+        It emphasizes correctness above any other concern; as such, it is relatively slow and should
+        not be used in production code.
+
+    Parameters
+    ----------
+    compare_func : callable
+    x : rt.Categorical or tuple
+    y : rt.Categorical or tuple
+
+    Returns
+    -------
+    comparison_result : np.ndarray of bool
+
+    Notes
+    -----
+    This function is a combination of the standard Python logic for comparing tuples and numpy logic
+    for upcasting during comparisons and broadcasting.
+
+    There is one important deviation from the standard logic:
+    Python allows comparison of tuples with unequal arity/rank, e.g. ``(2, 2) > (2, 1, 0)``. We require
+    tuples and `Categorical`s to have the same arity/rank; note this is an arbitrary restriction -- we could
+    implement the Python logic too, but requiring the arities to be equal feels like the correct approach
+    for riptable and also provides a better fit to SQL / relational algebra.
+
+    TODO:
+        * The current code does the right thing to return false for any comparisons of elements
+          corresponding to the invalid/NA (0 bin) in a Categorical. However, for SQL compliance
+          we need to implement additional logic to check each element of each tuple for whether
+          it's considered a riptable invalid/NA value -- if so, comparison against that component
+          always returns False. This logic needs to respect the order in which the tuple components
+          are compared -- e.g. (3, null) > (2, 10) should be True but (2, null) > (2, 10) should be
+          False because the 0th components are equal, so we move to the 1st components and the
+          comparison against null always returns null (which means the comparison result is False).
+        * Should we support comparison of a Categorical against a compatible tuple of arrays?
+        * For the real implementation of this method within Categorical, we may want to have a boolean
+          flag indicating whether integer invalids are recognized as such (or treated as if integers
+          have no invalids). It's not much more work to implement both versions and it'll allow
+          calling code to be explicit about which behavior it's expecting.
+          * Provide another bool flag to allow callers to specify what value comparisons with nulls
+            should return. Comparison operators would specify False, for example, to provide the
+            standard behavior with NaNs (where any comparison with a NaN returns false); however,
+            some other callers might want to do something like a wildcard comparison -- for example,
+            if we have a Categorical with 4-valued integer versions (major, minor, build, revision)
+            and we want to do a comparison like my_version_cat >= (2, inv, 5291, inv). We could fill
+            in zeros for those wildcards, but it'd be more general to do this using the proposed flag
+            so the behavior always works correctly even for signed integers, Date, etc.
+    """
+    if not isinstance(x, rt.Categorical) and not isinstance(x, tuple):
+        raise ValueError("The 'x' argument must be an rt.Categorical or tuple of Python scalars.")
+    elif not isinstance(y, rt.Categorical) and not isinstance(y, tuple):
+        raise ValueError("The 'y' argument must be an rt.Categorical or tuple of Python scalars.")
+
+    def cat_to_tuple_list(cat: rt.Categorical) -> Sequence[tuple]:
+        return list(zip(*cat.category_dict.values()))
+
+    if isinstance(x, rt.Categorical):
+        if isinstance(y, rt.Categorical):
+            # The Categoricals must have the same length (number of elements).
+            if len(x) != len(y):
+                raise ValueError("Cannot compare Categoricals with different lengths.")
+
+            x_cat_dict = x.category_dict
+            y_cat_dict = y.category_dict
+
+            # The categoricals must have the same arity/rank (i.e. same number of category arrays).
+            # They may have a different number of category values though.
+            if len(x_cat_dict) != len(y_cat_dict):
+                raise ValueError(f"Categoricals of unequal arity/rank cannot be compared. (x.rank={len(x_cat_dict)}, y.rank={len(y_cat_dict)})")
+
+            # Convert the category values in 'x' and 'y' to a list of tuples of numpy scalars.
+            # This gives us the correct combination of comparison logic for the next step.
+            x_cat_tuples = cat_to_tuple_list(x)
+            y_cat_tuples = cat_to_tuple_list(y)
+            assert builtins.all(map(lambda z: np.isscalar(z[0]), x_cat_tuples))
+
+            # Compare each category (key-tuple) from 'x' to those from 'y' to
+            # produce an m x n matrix of comparison results. Note these are only
+            # for the category values -- we'll need to fancy-index into this
+            # array to get the actual result array we want to return.
+            cat_comparison_results = rt.zeros((len(x_cat_tuples) + x.base_index, len(y_cat_tuples) + y.base_index), dtype=np.bool)
+            cat_comparison_results_view = cat_comparison_results[x.base_index:, y.base_index:]
+            for i in range(len(x_cat_tuples)):
+                for j in range(len(y_cat_tuples)):
+                    cat_comparison_results_view[i, j] = compare_func(x_cat_tuples[i], y_cat_tuples[j])
+
+            # Create a mask indicating which elements in the fancy index (created below) correspond to _valid_
+            # elements (i.e. not filtered/invalid) in one or both of the Categoricals.
+            # As of riptable 1.0.25, rt.isnan() doesn't work as expected for Categoricals so we need to
+            # do that manually.
+            x_isvalid = True if x.base_index == 0 else x._fa != 0
+            y_isvalid = True if y.base_index == 0 else y._fa != 0
+            result_valid_mask = np.logical_and(x_isvalid, y_isvalid)
+
+            # Combine the underlying data arrays for the Categoricals -- which individually can be used
+            # as a fancy index (as long as the .base_offset is accounted for) -- into a single fancy index
+            # that can be used to index into a flattened view of the comparison results to produce the
+            # final comparison output (that'll have the correct shape to match the input Categoricals).
+            # NOTE: The implementation here could in theory be simplified to index into the 2D comparison results
+            #       array like ``cat_comparison_results[arr1, arr2]`` but riptable (as of 1.0.24) punts to
+            #       numpy when rt.mbget() is called on multi-dimensional arrays. If that's ever fixed,
+            #       make the simplification above since it'll remove two intermediate array allocations
+            #       by pushing the multiplication and addition operations down to the C++ implementation.
+            # NOTE: The np.int32() usage is important here -- the underlying categorical arrays are likely
+            #       int8/int16/int32, so if we don't force them to be upcasted to a larger type, the index
+            #       calculation silently overflows and the results later on will be incorrect.
+            result_fa = (np.int32(len(y_cat_tuples) + y.base_index) * x._fa) + y._fa
+            assert np.all(result_fa >= 0), "Invalid/impossible array indices."
+
+            # Use the constructed fancy index to build the array of comparison results.
+            # Because riptide_cpp / riptable (as of 1.0.24) don't propagate integer invalids through
+            # operations like multiplication and addition, the fancy index we constructed above
+            # could have some valid-looking indices created from one or more *invalid* indices.
+            # To handle that, we use np.copyto() to overwrite the corresponding result values
+            # with False to mimic the behavior of how comparisons behave with NaNs in IEEE754.
+            comparison_results = cat_comparison_results.ravel()[result_fa]
+            np.copyto(comparison_results, False, casting='no', where=result_valid_mask)
+
+            return comparison_results
+
+        elif isinstance(y, tuple):
+            x_cat_dict = x.category_dict
+
+            # The tuple must have the same number of components as the Categorical has category columns.
+            if len(x_cat_dict) != len(y):
+                raise ValueError(f"Cannot compare a Categorical on {len(x_cat_dict)} columns against a tuple of {len(y)} components.")
+
+            # All components of the tuple are required to be scalars.
+            for i in range(len(y)):
+                if not np.isscalar(y[i]):
+                    raise ValueError(f"The component of 'y' at index {i} is not a scalar.")
+
+            # Convert the Category values in 'x' to a list of tuples of numpy scalars.
+            # See the Cat vs. Cat case for the details.
+            x_cat_tuples = cat_to_tuple_list(x)
+            assert builtins.all(map(lambda z: np.isscalar(z[0]), x_cat_tuples))
+
+            # Compare the tuple against each of the category tuples from 'x'.
+            cat_comparison_results = rt.zeros(len(x_cat_tuples) + x.base_index, dtype=np.bool)
+            cat_comparison_results_view = cat_comparison_results[x.base_index:]
+            for i in range(len(x_cat_tuples)):
+                cat_comparison_results_view[i] = compare_func(x_cat_tuples[i], y)
+
+            # Use the underlying data array for 'x' as a fancy index into the category comparison results
+            # to produce a results array that matches up to 'x'.
+            comparison_results = cat_comparison_results[x._fa]
+
+            return comparison_results
+
+        else:
+            # TODO: Maybe implement a branch here to support 1D categorical vs. scalar comparison?
+            #       Then we'd only raise an error for other unsupported types (e.g. some other container/sequence, some other class).
+            raise NotImplementedError(f"Support for the type '{type(y)}' is not implemented.")
+
+    elif isinstance(x, tuple):
+        if isinstance(y, rt.Categorical):
+            y_cat_dict = y.category_dict
+
+            # The tuple must have the same number of components as the Categorical has category columns.
+            if len(x) != len(y_cat_dict):
+                raise ValueError(
+                    f"Cannot compare a tuple of {len(x)} components against a Categorical on {len(y_cat_dict)} columns.")
+
+            # All components of the tuple are required to be scalars.
+            for i in range(len(x)):
+                if not np.isscalar(x[i]):
+                    raise ValueError(f"The component of 'x' at index {i} is not a scalar.")
+
+            # Convert the Category values in 'y' to a list of tuples of numpy scalars.
+            # See the Cat vs. Cat case for the details.
+            y_cat_tuples = cat_to_tuple_list(y)
+            assert builtins.all(map(lambda z: np.isscalar(z[0]), y_cat_tuples))
+
+            # Compare the tuple against each of the category tuples from 'y'.
+            cat_comparison_results = rt.zeros(len(y_cat_tuples) + y.base_index, dtype=np.bool)
+            cat_comparison_results_view = cat_comparison_results[y.base_index:]
+            for i in range(len(y_cat_tuples)):
+                cat_comparison_results_view[i] = compare_func(x, y_cat_tuples[i])
+
+            # Use the underlying data array for 'y' as a fancy index into the category comparison results
+            # to produce a results array that matches up to 'y'.
+            comparison_results = cat_comparison_results[y._fa]
+
+            return comparison_results
+
+        elif isinstance(y, tuple):
+            raise ValueError("At least one of the two comparands must be a Categorical.")
+
+        else:
+            # TODO: Maybe implement a branch here to support 1D categorical vs. scalar comparison?
+            #       Then we'd only raise an error for other unsupported types (e.g. some other container/sequence, some other class).
+            raise NotImplementedError(f"Support for the type '{type(y)}' is not implemented.")
+
+    else:
+        raise NotImplementedError(f"Support for the type '{type(x)}' is not implemented.")
+
+
+# TODO: Replace this with assert_array_equal(), as that implements a stricter equality comparison
+#       that also accounts for NA/NaN values.
 def array_equal(arr1, arr2):
     subr = arr1 - arr2
     sumr = sum(subr == 0)
@@ -343,7 +562,6 @@ class TestCategorical:
                     result = func(bad_idx)
 
     def test_map(self):
-
         c = Categorical(['b', 'b', 'c', 'a', 'd'], ordered=False)
         mapping = {'a': 'AA', 'b': 'BB', 'c': 'CC', 'd': 'DD'}
         result = c.map(mapping)
@@ -1339,6 +1557,100 @@ class TestCategorical:
         result = c1 == c2
         match = bool(np.all(correct == result))
         assert match
+
+    @pytest.mark.parametrize("op_name", compare_func_names)
+    def test_compare_multikey_cat_vs_multikey_cat(self, op_name: str):
+        """Test comparison logic for two multikey Categoricals."""
+        compare_func = getattr(operator, op_name)
+
+        # TODO: Implement checks to verify an error is raised when:
+        #   * the Categoricals are different lengths
+        #   * the Categoricals have different rank (number of category columns)
+        #   * incompatible/uncomparable category arrays (e.g. categorical 'A's 2nd category column
+        #     is a string array but categorical 'B's 2nd category column is an integer or Date).
+
+        # Create two compatible multikey Categoricals to test the comparison logic.
+        cat_a_filter = rt.FA([ True,  True,  True,  True,  True,  True, False,  True,  True, True, False,  True,  True, False,  True, False,  True,  True, True,  True], dtype=np.bool)
+        cat_a = rt.Categorical([
+            rt.FA([8, 6, 8, 0, 9, 1, 1, 0, 1, 5, 4, 6, 5, 0, 3, 5, 2, 3, 4, 9], dtype=np.int32),
+            rt.FA([358, 895, 358, 895, 0, -179, -358, -716, 537, 537, 179, 716, -537, -895, -716, -179, -716, 179, 537, 358], dtype=np.int16),
+            rt.FA([
+                b'45fe446c69', b'f24b80397c', b'45fe446c69', b'abc60647fd', b'56dee0a8b0',
+                b'7afe8c5d3f', b'171674b99c', b'2f0438b10a', b'7d780022b8', b'c34742169f',
+                b'e954c312b2', b'eb43899a35', b'a89a2b870d', b'd2ac2b5359', b'2f078bace8',
+                b'40fe99d050', b'9752e063e9', b'4a66f69fb5', b'6907359a83', b'dd999ad979'], dtype="S10"),
+            # TODO: Also add an rt.Date array here
+        ], filter=cat_a_filter)
+
+        cat_b_filter = rt.FA([ True,  True,  True,  True, False,  True,  True, False,  True, False, False,  True,  True,  True, False,  True,  True,  True, True, False], dtype=np.bool)
+        cat_b = rt.Categorical([
+            rt.FA([6, 6, 4, 9, 8, 5, 9, 8, 3, 6, 4, 4, 5, 3, 2, 4, 0, 1, 4, 2], dtype=np.int32),
+            rt.FA([179, 0, 537, 358, 358, 179, 179, 716, 895, 716, 179, 895, 537, 716, 895, 0, 0, 716, 537, 0], dtype=np.uint16),
+            rt.FA([
+                '3c62ed9ba7', '4d159968fc', '6907359a83', '0426d59978', '45fe446c69',
+                '6be335debf', '62e6c9eee4', 'eae9f57cdc', '663d6aeea1', '23553e0997',
+                '8c0ee4604f', '89db4cc641', 'a89a2b870d', 'df35217de5', '422c78fd7f',
+                'f4d37c22a4', '5caacb68c0', '1f2601e91c', '6907359a83', '8685e75d78'], dtype="U10"),
+            # TODO: Also add an rt.Date array here
+        ], filter=cat_b_filter)
+
+        # Compare using the strict, Python-tuple-based reference implementation.
+        reference_result = strict_tuple_comparison(compare_func, cat_a, cat_b)
+
+        # Compare the two Categoricals using the specified comparison method
+        # on Categorical itself.
+        cat_compare_func = getattr(cat_a, op_name)
+        cat_compare_result = cat_compare_func(cat_b)
+
+        # Are the results the same?
+        assert_array_equal(reference_result, cat_compare_result)
+
+    @pytest.mark.parametrize("op_name", compare_func_names)
+    @pytest.mark.parametrize("tup", [
+        (6, 179, '3c62ed9ba7'),
+        (4, 537, '6907359a83'),
+        pytest.param(
+            (1, -358, b'171674b99c'),
+            id="compare tuple against filtered Categorical row"
+        ),
+        (2, 0, '8685e75d78')
+    ])
+    def test_compare_multikey_cat_vs_tuple(self, op_name: str, tup: tuple):
+        """Test comparison logic for two multikey Categoricals."""
+        compare_func = getattr(operator, op_name)
+
+        # TODO: Implement checks to verify an error is raised when:
+        #   * the Categoricals are different lengths
+        #   * the Categoricals have different rank (number of category columns)
+        #   * incompatible/uncomparable category arrays (e.g. categorical 'A's 2nd category column
+        #     is a string array but categorical 'B's 2nd category column is an integer or Date).
+
+        # Create a multikey Categorical to test the comparison logic.
+        cat_a_filter = rt.FA(
+            [True, True, True, True, True, True, False, True, True, True, False, True, True, False, True, False, True,
+             True, True, True], dtype=np.bool)
+        cat_a = rt.Categorical([
+            rt.FA([8, 6, 8, 0, 9, 1, 1, 0, 1, 5, 4, 6, 5, 0, 3, 5, 2, 3, 4, 9], dtype=np.int32),
+            rt.FA([358, 895, 358, 895, 0, -179, -358, -716, 537, 537, 179, 716, -537, -895, -716, -179, -716, 179, 537,
+                   358], dtype=np.int16),
+            rt.FA([
+                b'45fe446c69', b'f24b80397c', b'45fe446c69', b'abc60647fd', b'56dee0a8b0',
+                b'7afe8c5d3f', b'171674b99c', b'2f0438b10a', b'7d780022b8', b'c34742169f',
+                b'e954c312b2', b'eb43899a35', b'a89a2b870d', b'd2ac2b5359', b'2f078bace8',
+                b'40fe99d050', b'9752e063e9', b'4a66f69fb5', b'6907359a83', b'dd999ad979'], dtype="S10"),
+            # TODO: Also add an rt.Date array here
+        ], filter=cat_a_filter)
+
+        # Compare using the strict, Python-tuple-based reference implementation.
+        reference_result = strict_tuple_comparison(compare_func, cat_a, tup)
+
+        # Compare the two Categoricals using the specified comparison method
+        # on Categorical itself.
+        cat_compare_func = getattr(cat_a, op_name)
+        cat_compare_result = cat_compare_func(tup)
+
+        # Are the results the same?
+        assert_array_equal(reference_result, cat_compare_result)
 
     def test_isnan(self):
         c = Categorical([1, 1, 3, 2, 2], ['a', 'b', 'c'], base_index=1, invalid='a')
