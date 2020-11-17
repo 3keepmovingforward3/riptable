@@ -1,7 +1,7 @@
 import builtins # Necessary because of the "from riptable import *" below.
 from enum import IntEnum
 import operator
-from typing import Any, Callable, Optional, Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union
 
 import numpy as np
 
@@ -10,16 +10,10 @@ from numpy.testing import assert_array_equal
 
 import riptable as rt
 from riptable import FastArray, Categorical, CatZero
-from riptable.rt_categorical import Categories
 from riptable.rt_enum import (
     INVALID_DICT,
 )
 from riptable.rt_enum import CategoryMode
-from riptable.rt_numpy import isnan, arange, ones
-from riptable.tests.test_utils import (
-    get_categorical_data_factory_method,
-    get_all_categorical_data,
-)
 from riptable.tests.utils import LikertDecision
 
 
@@ -61,106 +55,11 @@ list_true_unicode = [u'b\u2082', u'b\u2082', u'a\u2082', u'd\u2082', u'c\u2082']
 
 decision_dict = dict(zip(LikertDecision.__members__.keys(), [int(v) for v in LikertDecision.__members__.values()],))
 
-
-# TODO: Replace this with assert_array_equal(), as that implements a stricter equality comparison
-#       that also accounts for NA/NaN values.
-def array_equal(arr1, arr2):
-    subr = arr1 - arr2
-    sumr = sum(subr == 0)
-    result = sumr == len(arr1)
-    if not result:
-        print("array comparison failed", arr1, arr2)
-    return result
-
-
 PythonScalar = Union[int, float, str, bytes, bool]
 """Type annotation indicating which Python types are valid for use as numpy scalars."""
 
 PythonScalarOrWildcard = Union[PythonScalar, 'ellipsis']    # Union[PythonScalar, builtins.ellipsis]
 """Type annotation indicating which Python types are valid for use as numpy scalars, plus the ellipsis (...) which can be used as a wildcard."""
-
-
-# TODO: In py38+, enable the use of typing.Literal here to improve the annotation.
-CompareResult = bool    # Union[bool, Literal[NotImplemented]]
-
-
-def isnan_safe(x):
-    try:
-        return np.isnan(x)
-    except TypeError:
-        return False
-
-
-def scalarize(x) -> Optional[Union[np.ndarray, np.generic]]:
-    # Convert the value, if it's a Python scalar (but not a numpy array scalar)
-    # to support comparisons between numpy.bytes_ and str.
-    # Existing array scalars and ellipsis are passed through unchanged; return None
-    # for all other types, including numpy arrays (since by the time this function is called
-    # we should be only operating on scalars).
-    if x is Ellipsis or isinstance(x, (np.ndarray, np.generic)):
-        return x
-    elif np.isscalar(x):
-        return np.array([x])[0]
-    else:
-        return None
-
-
-def tuple_with_wildcard_compare_func(v: tuple, w: tuple, compare_func: Callable[[Any, Any], CompareResult]) -> CompareResult:
-    """Python-based implementation of the CPython comparison function for tuples, extended with wildcard support."""
-    # CPython tuple comparison implementation:
-    # https://github.com/python/cpython/blob/0430dfac629b4eb0e899a09b899a494aa92145f6/Objects/tupleobject.c#L674
-    if not isinstance(v, tuple) or not isinstance(w, tuple):
-        return NotImplemented
-
-    vlen = len(v)
-    wlen = len(w)
-
-    # Search for the first index where items are different.
-    # Note that because tuples are immutable, it's safe to reuse
-    # the vlen and wlen across the comparison calls.
-    common_len = builtins.min(vlen, wlen)
-    i = 0
-    while i < common_len:
-        # Convert the component values to numpy scalars if needed.
-        # This also effectively provides a check for reasonable values and assists with the
-        # isnan() checks below, especially since the checks then support riptide invalids.
-        v_i = scalarize(v[i])
-        w_i = scalarize(w[i])
-        i += 1
-
-        # If either component is not a scalar at this point, we have a bad value
-        # so stop and give an informative error message.
-        if v_i is None:
-            raise ValueError(f"Component at index {i} of L.H.S. is a type ('{type(v[i])}') not supported for use as a numpy scalar.")
-        elif w_i is None:
-            raise ValueError(f"Component at index {i} of R.H.S. is a type ('{type(w[i])}') not supported for use as a numpy scalar.")
-
-        # Wildcard support: if either element is NaN, that takes precedence so return False;
-        # otherwise, if either element is ... (ellipsis), consider the equality comparison to be True.
-        # N.B. Can avoid the math.isnan() call here if we ever care to support more-general types,
-        #      we'll just need to detect the bottom-type absorbing condition by doing both an
-        #      equals and not-equals comparison (if they both return False, that's a NaN).
-        # TODO: As of 2020-11-13, this doesn't recognize riptide integer invalids, because extracting an
-        #       element of a FastArray returns a normal numpy array scalar, rather than some kind of FastArray
-        #       scalar that'd recognize when it's holding the invalid value for it's dtype.
-        if isnan_safe(v_i) or isnan_safe(w_i):
-            return False
-
-        if v_i is Ellipsis or w_i is Ellipsis:
-            continue
-
-        # N.B. The CPython implementation does an equality check (Py_EQ) here,
-        # so we do the same thing to match.
-        if not (v_i == w_i):
-            break
-
-    if i >= vlen or i >= wlen:
-        # No more items to compare -- compare sizes
-        return compare_func(vlen, wlen)
-
-    # We have an item that differs.
-    # Compare the final item again using the proper operator.
-    return v[i] is Ellipsis or w[i] is Ellipsis or compare_func(scalarize(v[i]), scalarize(w[i]))
 
 
 def reference_comparison(
@@ -211,7 +110,8 @@ def reference_comparison(
           are compared -- e.g. (3, null) > (2, 10) should be True but (2, null) > (2, 10) should be
           False because the 0th components are equal, so we move to the 1st components and the
           comparison against null always returns null (which means the comparison result is False).
-        * Current implementation assumes Categorical instances are the "standard" .singlekey or
+          * This is done now, just need to implement test cases to verify the behavior is correct.
+        * Current implementation (for Cat vs. Cat case) assumes Categorical instances are the "standard" .singlekey or
           .multikey variety; the current comparison implementation in Categorical also handles (some)
           cases for the "enum" and "dict"-style Categoricals. This function (below) is meant to be a
           slow-but-accurate reference implementation, so it should also support those Categorical types.
@@ -278,6 +178,11 @@ def reference_comparison(
             # They may have a different number of category values though.
             if len(x_cat_dict) != len(y_cat_dict):
                 raise ValueError(f"Categoricals of unequal arity/rank cannot be compared. (x.rank={len(x_cat_dict)}, y.rank={len(y_cat_dict)})")
+
+            # TODO: Add check (similar to Cat vs. tuple case below) for performing an inequality comparison when
+            #       one or both of the Categoricals is not .ordered and not .isenum?
+            # TODO: Is it allowed to compare Categoricals of different types (e.g. an .isenum Cat vs. a .singlekey Cat)?
+            #       If so, are there any restrictions we need to enforce to ensure correctness?
 
             # Convert the category values in 'x' and 'y' to a list of tuples of numpy scalars.
             # This gives us the correct combination of comparison logic for the next step.
@@ -371,8 +276,10 @@ def reference_comparison(
 
                 comparison_in_progress = np.ones_like(cat_comparison_results_view)
 
-                # Iterate over each component of the tuple and the corresponding category value array from the Categorical,
-                # performing a comparison between them and updating the results.
+                # Iterate over each component of the tuple and the corresponding category value array
+                # from the Categorical, performing a comparison between them and updating the results.
+                # Logic is similar to the CPython tuple comparison implementation, except vectorized and with wildcards.
+                # https://github.com/python/cpython/blob/0430dfac629b4eb0e899a09b899a494aa92145f6/Objects/tupleobject.c#L674
                 for (key_name, cat_key_values), (component_idx, tup_component) in zip(x_cat_dict.items(), enumerate(y)):
                     # Short-circuit if no category tuples are still being compared.
                     if not np.any(comparison_in_progress):
@@ -421,6 +328,9 @@ def reference_comparison(
 
                     elif isinstance(tup_component, np.ndarray):
                         # TODO: Validate array shape and type
+                        #       Note that 'tup_component' could be a Categorical here; if so,
+                        #       only allow it to be a 1-ary Categorical, as it's not clear whether
+                        #       it makes sense or is well-defined to allow higher-arity Cats here.
                         raise NotImplementedError("TODO: Implement support for comparing a Categorical with a shape- and type-compatible array.")
 
                     elif tup_component is Ellipsis:
@@ -433,7 +343,7 @@ def reference_comparison(
                             comparison_in_progress = np.logical_and(comparison_in_progress, category_valid_components)
 
                     else:
-                        raise ValueError(f"The component of 'y' at index {component_idx} is not a scalar, np.ndarray, or ellipsis.")
+                        raise ValueError(f"The tuple component at index {component_idx} is not a scalar, np.ndarray, or ellipsis.")
 
                 # If any categories are still marked as in-progress, it should be because the comparison op
                 # includes equality (__eq__, __ge__, __le__) and all components of the category are equal
