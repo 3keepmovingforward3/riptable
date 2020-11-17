@@ -381,11 +381,6 @@ def reference_comparison(
                     # Comparisons with NaN/NA/invalid always return False (according to SQL semantics and IEEE754).
                     # TODO: Whenever FastArray.__getitem__ returns riptable scalars (which support integer NA values),
                     #       check the tuple component for NaN/NA here too in case we're given one of those.
-                    # TODO: Fix this -- it won't give the correct behavior for categories which've already had their
-                    #       comparison "decided". E.g. we expect something like (3, nan) > (2, 1.5), because the first
-                    #       components are different and decide the outcome so we don't consider the second elements.
-                    #       Maybe just calculate the rt.isnotnan() here since it's relevant to all cases below, and rely
-                    #       on them to combine the values into the results.
                     # TEMP: Work around rt.isnotnan() not working for string arrays (as of 2020-11-17)
                     category_valid_components = True if cat_key_values.dtype.char in 'SU' else rt.isnotnan(cat_key_values)
 
@@ -663,6 +658,10 @@ class TestCategoricalCompare:
         #   * the Categoricals have different rank (number of category columns)
         #   * incompatible/uncomparable category arrays (e.g. categorical 'A's 2nd category column
         #     is a string array but categorical 'B's 2nd category column is an integer or Date).
+
+        # TODO: Implement additional test cases to verify the output.
+        #   * We expect something like (3, nan) > (2, 1.5), because the first components
+        #     are different and decide the outcome so we don't consider the second elements.
 
         # Create a multikey Categorical to test the comparison logic.
         cat_a_filter = rt.FA(
