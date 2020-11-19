@@ -110,7 +110,8 @@ def reference_comparison(
           are compared -- e.g. (3, null) > (2, 10) should be True but (2, null) > (2, 10) should be
           False because the 0th components are equal, so we move to the 1st components and the
           comparison against null always returns null (which means the comparison result is False).
-          * This is done now, just need to implement test cases to verify the behavior is correct.
+          * Still need to implement this for the Cat-vs-Cat case.
+          * This is done now for Cat-vs-tuple, just need to implement test cases to verify the behavior is correct.
         * Current implementation (for Cat vs. Cat case) assumes Categorical instances are the "standard" .singlekey or
           .multikey variety; the current comparison implementation in Categorical also handles (some)
           cases for the "enum" and "dict"-style Categoricals. This function (below) is meant to be a
@@ -183,6 +184,30 @@ def reference_comparison(
             #       one or both of the Categoricals is not .ordered and not .isenum?
             # TODO: Is it allowed to compare Categoricals of different types (e.g. an .isenum Cat vs. a .singlekey Cat)?
             #       If so, are there any restrictions we need to enforce to ensure correctness?
+
+            # TODO: Re-implement part of the code below. Instead of using the 'cat_to_tuple_list()' function
+            #       then needing to iterate over the tuples to compare them, zip x_cat_dict.items() and y_cat_dict.items(),
+            #       then iterate over them in a loop (similar to what we're doing for the Cat-vs-tuple case below).
+            #       Within the loop, compare the category arrays using e.g. np.less_equal.outer(), then np.logical_and()
+            #       the 2D comparison arrays together (can be done in-place on top of cat_comparison_results_view).
+            #       The result_valid_mask after the loop (for handling invalids) can use np.outer() to compute the outer
+            #       product of the two boolean arrays, since that's effectively "np.logical_and.outer()" anyway (then
+            #       AND that result with cat_comparison_results_view).
+            #       A more memory-efficient approach (which is also a bit slower, but will definitely be better for
+            #       cases where arity(x) * arity(y) is large -- say over 1e6 -- we could create a Categorical (or just
+            #       call rt.unique()) on a tuple of the underlying integer arrays of the Categoricals. They must be the
+            #       same length by the time they reach this point, and knowing the actual unique combinations allows us
+            #       to (potentially, depending on the data) pare down the search space. Use the result of unique() to
+            #       fancy-index into the category array(s), then do our usual outer-product type approach for the comparison.
+            # TODO: Another approach -- maybe better to use for the actual implementation where we really want to focus
+            #       on performance -- do the 'zip' approach described above (on the two cat dicts), then for each pair
+            #       of category arrays do a 'searchsorted' to determine the relative ordering of the category values.
+            #       * If you squint just right, the logic needed for this is similar to (but not exactly the same as)
+            #         a theta-join?
+            #       * Want to end up with two integer arrays, whose lengths correspond to the lengths of
+            #         the arrays in .category_dict; the values in these arrays should be (roughly speaking) the
+            #         values we'd get from calling argsort(tuple([hstack([a, b]) for (a, b) in zip(x_cat_dict.values(), y_cat_dict.values())])).
+            #         Once we have these two arrays, the comparison should be something like x_cat_argsort[x._fa] (compare_op) y_cat_argsort[y._fa].
 
             # Convert the category values in 'x' and 'y' to a list of tuples of numpy scalars.
             # This gives us the correct combination of comparison logic for the next step.
@@ -331,6 +356,10 @@ def reference_comparison(
                         #       Note that 'tup_component' could be a Categorical here; if so,
                         #       only allow it to be a 1-ary Categorical, as it's not clear whether
                         #       it makes sense or is well-defined to allow higher-arity Cats here.
+                        #       For the comparison between the category array and the array from the tuple component,
+                        #       use rt.searchsorted() as in the Cat-vs-Cat case (although since this approach is a bit
+                        #       more complex, let's save that for the "real" implementation and keep the reference
+                        #       implementation here simple).
                         raise NotImplementedError("TODO: Implement support for comparing a Categorical with a shape- and type-compatible array.")
 
                     elif tup_component is Ellipsis:
