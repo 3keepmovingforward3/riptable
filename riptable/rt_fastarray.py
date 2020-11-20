@@ -1796,18 +1796,26 @@ class FastArray(np.ndarray):
         return result
 
     #-------------------------------------------------------
-    def differs(self, periods=1, fancy=False):
+    def differs(self, periods: int = 1, fancy: bool = False) -> 'FastArray':
         """
-        Returns a boolean array.
         The boolean array is set to True when the previous item in the array equals the current.
         Use -1 instead of 1 if you want True set when the next item in the array equals the previous.
-        See also: ``transitions``
 
-        ::param periods: The number of elements to look ahead (or behind), defaults to 1
-        :type periods: int
-        :param fancy: Indicates whether to return a fancy_index instead of a boolean array, defaults to False.
-        :type fancy: bool
-        :return: boolean ``FastArray``, or fancyIndex (see: `fancy` kwarg)
+        Parameters
+        ----------
+        periods : int, defaults to 1
+            The number of elements to look ahead (or behind).
+        fancy : bool, defaults to False
+            Indicates whether to return a fancy_index instead of a boolean array.
+
+        Returns
+        -------
+        FastArray
+            A `FastArray` of bool, or a `FastArray` containing a fancy index when `fancy` is True.
+
+        See Also
+        --------
+        transitions
         """
         if self.dtype.num > 13:
             result = self != self.shift(periods)
@@ -1817,19 +1825,25 @@ class FastArray(np.ndarray):
         return self._internal_self_compare(MATH_OPERATION.CMP_EQ, periods=periods, fancy=fancy)
 
     #---------------------------------------------------------------------------
-    def transitions(self, periods=1, fancy=False):
+    def transitions(self, periods: int = 1, fancy: bool = False) -> 'FastArray':
         """
-        Returns a boolean array.
         The boolean array is set to True when the previous item in the array does not equal the current.
         Use -1 instead of 1 if you want True set when the next item in the array does not equal the previous.
-        See also: ``differs``
 
-        :param periods: The number of elements to look ahead (or behind), defaults to 1
-        :type periods: int
-        :param fancy: Indicates whether to return a fancy_index instead of a boolean array, defaults to False.
-        :type fancy: bool
-        :return: boolean ``FastArray``, or fancyIndex (see: `fancy` kwarg)
+        Parameters
+        ----------
+        periods : int, defaults to 1
+            The number of elements to look ahead (or behind).
+        fancy : bool, defaults to False
+            Indicates whether to return a fancy_index instead of a boolean array.
 
+        Returns
+        -------
+        FastArray
+            A `FastArray` of bool, or a `FastArray` containing a fancy index when `fancy` is True.
+
+        Examples
+        --------
         >>> a = FastArray([0,1,2,3,3,3,4])
         >>> a.transitions(periods=1)
         FastArray([False, True, True, True, False, False, True])
@@ -1839,6 +1853,10 @@ class FastArray(np.ndarray):
 
         >>> a.transitions(periods=-1)
         FastArray([ True, True, True, False, False, True, False])
+
+        See Also
+        --------
+        differs
         """
         if self.dtype.num > 13:
             result = self != self.shift(periods)
@@ -1848,23 +1866,24 @@ class FastArray(np.ndarray):
         return self._internal_self_compare(MATH_OPERATION.CMP_NE, periods=periods, fancy=fancy)
 
     #-------------------------------------------------------
-    def diff(self, periods=1):
+    def diff(self, periods: int = 1) -> 'FastArray':
         """
         Only works for integers and floats.
 
         Parameters
         ----------
-        periods: int, defaults to 1.  How many elements to shift the data before subtracting.
+        periods: int, defaults to 1
+            How many elements to shift the data before subtracting.
 
         Returns
         -------
-        FastArray same length as current array.  Invalids will fill the beginning based on the periods.
+        FastArray
+            A `FastArray` the same length as current array.  Invalids will fill the beginning based on the periods.
 
         Examples
         --------
         >>> a=rt.arange(3, dtype=rt.int32); a.diff()
         FastArray([-2147483648,           1,           1])
-
         """
         try:
             invalid = INVALID_DICT[self.dtype.num]
@@ -1961,8 +1980,8 @@ class FastArray(np.ndarray):
 
         Examples
         --------
-        >>> ds = rt.Dataset({'A': arange(3), 'B': arange(3.0)})^M
-        >>> ds.A[2]=ds.A.inv; ds.B[1]=np.nan;
+        >>> ds = rt.Dataset({'A': arange(3), 'B': arange(3.0)})
+        >>> ds.A[2]=ds.A.inv; ds.B[1]=np.nan
         >>> ds.fillna(FastArray.fillna, 0)
         #   A      B
         -   -   ----
