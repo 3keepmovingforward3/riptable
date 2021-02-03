@@ -2523,25 +2523,11 @@ class Dataset(Struct):
         from .Utils.pandas_utils import _to_unicode_if_string
 
         data = self.asdict()
+
         for key, col in self.items():
             dtype = col.dtype
             if isinstance(col, TypeRegister.Categorical):
-                if col.category_mode in (CategoryMode.Default, CategoryMode.StringArray, CategoryMode.NumericArray):
-                    pass  # already compatible with pandas; no special handling needed
-                elif col.category_mode in (CategoryMode.Dictionary, CategoryMode.MultiKey, CategoryMode.IntEnum):
-                    # Pandas does not have a notion of a IntEnum, Dictionary, and Multikey category mode.
-                    # Encode dictionary codes to a monotonically increasing sequence and construct
-                    # pandas Categorical as if it was a string or numeric array category mode.
-                    old_category_mode = col.category_mode
-                    col = col.as_singlekey()
-                    warnings.warn(f"Dataset.to_pandas: column '{key}' converted from {repr(CategoryMode(old_category_mode))} to {repr(CategoryMode(col.category_mode))}.")
-                else:
-                    raise NotImplementedError(f'Dataset.to_pandas: Unhandled category mode {repr(CategoryMode(col.category_mode))}')
-
-                base_index = 0 if col.base_index is None else col.base_index
-                codes = np.asarray(col) - base_index
-                categories = _to_unicode_if_string(col.category_array) if unicode else col.category_array
-                data[key]: pd.Categorical = pd.Categorical.from_codes(codes, categories=categories)
+                data[key]: pd.Categorical = col.to_pandas()
             elif isinstance(col, TypeRegister.DateTimeNano):
                 ccol = col.copy()
                 arr = ccol._timezone.fix_dst(ccol._fa)

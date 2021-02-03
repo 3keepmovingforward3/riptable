@@ -4562,6 +4562,29 @@ class Categorical(GroupByOps, FastArray):
             start_idx = end_idx
         return res
 
+    def to_pandas(self, unicode: bool = True):
+        import pandas as pd
+        from .Utils.pandas_utils import _to_unicode_if_string
+        if self.category_mode in (CategoryMode.Default, CategoryMode.StringArray, CategoryMode.NumericArray):
+            pass  # already compatible with pandas; no special handling needed
+        elif self.category_mode in (CategoryMode.Dictionary, CategoryMode.MultiKey, CategoryMode.IntEnum):
+            # Pandas does not have a notion of a IntEnum, Dictionary, and Multikey category mode.
+            # Encode dictionary codes to a monotonically increasing sequence and construct
+            # pandas Categorical as if it was a string or numeric array category mode.
+            old_category_mode = self.category_mode
+            self = self.as_singlekey()
+            warnings.warn(
+                f"Categorical.to_pandas: Categorical ('{self.get_name}') converted from {repr(CategoryMode(old_category_mode))}"
+                f" to {repr(CategoryMode(self.category_mode))}.")
+        else:
+            raise NotImplementedError(
+                f'Dataset.to_pandas: Unhandled category mode {repr(CategoryMode(self.category_mode))}')
+
+        base_index = 0 if self.base_index is None else self.base_index
+        codes = np.asarray(self) - base_index
+        categories = _to_unicode_if_string(self.category_array) if unicode else self.category_array
+        return pd.Categorical.from_codes(codes, categories=categories)
+
 # ------------------------------------------------------------
 def categorical_merge_dict(list_categories, return_is_safe:bool=False, return_type:type=Categorical):
     '''
