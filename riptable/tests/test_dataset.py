@@ -13,7 +13,7 @@ from riptable import Struct
 from riptable import Dataset
 from riptable import Categorical
 from riptable import NumpyCharTypes
-from riptable import TimeSpan, utcnow, Date
+from riptable import TimeSpan, utcnow, Date, DateTimeNano
 from riptable.rt_numpy import arange, isnan, tile, logical
 from riptable.rt_utils import describe
 from riptable.rt_enum import (
@@ -2134,6 +2134,7 @@ class TestDataset(unittest.TestCase):
         with self.assertRaises(IndexError):
             ds['_num']=arange(10)        
 
+
 @pytest.mark.parametrize('categorical', get_all_categorical_data())
 def test_dataset_to_dataframe_roundtripping(categorical):
     k = 'categorical'
@@ -2144,6 +2145,42 @@ def test_dataset_to_dataframe_roundtripping(categorical):
     # add support for checking category arrays of multikey categoricals
     if categorical.category_mode != CategoryMode.MultiKey:
         assert_array_equal(ds[k].category_array, ds_from_pandas[k].category_array)
+
+
+@pytest.mark.parametrize("index_cols", [
+    ['ints'],
+    ['ints', 'cat0'],
+    ['time', 'cat1', 'cat0'],
+])
+def test_to_pandas_labels_to_index(index_cols):
+    ds = Dataset(dict(
+        ints=[4, 5],
+        cat0=Categorical([0, 1], ['a', 'b'], base_index=0),
+        cat1=Categorical([1, 2], ['x', 'y'], base_index=1),
+        time=TimeSpan(['09:00:00', '10:00:00']),
+    ))
+    ds.label_set_names(index_cols)
+
+    expected = pd.DataFrame(dict(
+        ints=[4, 5],
+        cat0=pd.Categorical.from_codes([0, 1], ['a', 'b'], ),
+        cat1=pd.Categorical.from_codes([0, 1], ['x', 'y'], ),
+        time=pd.to_timedelta(['09:00:00', '10:00:00']),
+    )).set_index(index_cols)
+    result = ds.to_pandas(labels_to_index=True, use_nullable=False)
+    pd.testing.assert_frame_equal(result, expected)
+
+
+def test_to_pandas_labels_to_index_false():
+    ds = Dataset(dict(
+        a=[4, 5], b=[-1, 1]
+    ))
+    ds.label_set_names('a')
+    result = ds.to_pandas(labels_to_index=False)
+    expected = pd.DataFrame(dict(
+        a=[4, 5], b=[-1, 1]
+    ))
+    pd.testing.assert_frame_equal(result, expected)
 
 
 if __name__ == "__main__":
