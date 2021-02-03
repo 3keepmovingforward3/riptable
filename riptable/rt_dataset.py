@@ -2486,7 +2486,7 @@ class Dataset(Struct):
         # TJD this code is slow and needs review
         return [[self[_i, _c] for _c in self.keys()] for _i in range(self.get_nrows())]
 
-    def to_pandas(self, unicode: bool = True, use_nullable: bool = True) -> 'pd.DataFrame':
+    def to_pandas(self, unicode: bool = True, use_nullable: bool = True, labels_to_index: bool = True) -> 'pd.DataFrame':
         """
         Create a pandas DataFrame from this riptable.Dataset.
         Will attempt to preserve single-key categoricals, otherwise will appear as
@@ -2498,6 +2498,8 @@ class Dataset(Struct):
             Set to False to keep byte strings as byte strings. Defaults to True.
         use_nullable : bool
             Whether to use pandas nullable integer dtype for integer columns (default: True).
+        labels_to_index: bool
+            Whether to construct the DataFrame index from label columns where such are present.
 
         Returns
         -------
@@ -2551,7 +2553,21 @@ class Dataset(Struct):
 
             else:
                 data[key] = _to_unicode_if_string(col) if unicode else col
-        return pd.DataFrame(data)
+
+        index = None
+        if labels_to_index:
+            label_names = self.label_get_names()
+            nlevels = len(label_names)
+            if nlevels == 1:
+                key = label_names[0]
+                index = pd.Index(data[key], name=key)
+            elif nlevels > 1:
+                index = pd.MultiIndex.from_arrays([data[key] for key in label_names],
+                                                  names=label_names)
+            for key in label_names:
+                del data[key]
+
+        return pd.DataFrame(data, index)
 
     def as_pandas_df(self):
         """
