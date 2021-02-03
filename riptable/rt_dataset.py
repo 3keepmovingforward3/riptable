@@ -2525,6 +2525,9 @@ class Dataset(Struct):
         from .Utils.pandas_utils import _to_unicode_if_string
 
         data = self.asdict()
+        if use_nullable and not hasattr(pd, 'arrays'):
+            warnings.warn(f"Cannot use_nullable for this version of pandas: {pd.__version__}")
+            use_nullable = False
 
         for key, col in self.items():
             dtype = col.dtype
@@ -2546,11 +2549,10 @@ class Dataset(Struct):
                 # N.B. Have to make a copy of the array to numpy array otherwise pandas seg
                 #      fault in DataFrame.
                 # NOTE: not all versions of pandas have pd.arrays
-                if hasattr(pd, 'arrays'):
+                if is_invalid.any():
                     data[key] = pd.arrays.IntegerArray(np.array(col), mask=is_invalid)
                 else:
                     data[key] = np.array(col)
-
             else:
                 data[key] = _to_unicode_if_string(col) if unicode else col
 
