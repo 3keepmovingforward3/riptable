@@ -13,6 +13,12 @@ import warnings
 from ..rt_dataset import Dataset
 
 
+def _to_unicode_if_string(arr):
+    if arr.dtype.char == 'S':
+        arr = arr.astype('U')
+    return arr
+
+
 def dataset_from_pandas_df(df, tz='UTC'):
     """
     This function is deprecated, please use riptable.Dataset.from_pandas.

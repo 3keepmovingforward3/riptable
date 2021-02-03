@@ -2520,11 +2520,7 @@ class Dataset(Struct):
         riptable.Dataset.from_pandas
         """
         import pandas as pd
-
-        def _to_unicode_if_string(arr):
-            if arr.dtype.char == 'S':
-                arr = arr.astype('U')
-            return arr
+        from .Utils.pandas_utils import _to_unicode_if_string
 
         data = self.asdict()
         for key, col in self.items():
