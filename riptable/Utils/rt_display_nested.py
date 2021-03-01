@@ -216,7 +216,7 @@ class DisplayNested:
                     item_formatter = _cat_info
 
                 elif isinstance(
-                    v, (int, float, bool, np.integer, np.floating, np.bool, str, bytes)
+                    v, (int, float, bool, np.integer, np.floating, np.bool_, str, bytes)
                 ):
                     item_formatter = _scalar_info
 
@@ -272,7 +272,7 @@ class DisplayNested:
                     file_str += f"<p>{k}"
                     file_str += f" {type(v).__name__} {_arr_info(v)}"  # {v.dtype}"
                 elif isinstance(
-                    v, (int, float, bool, np.integer, np.floating, np.bool, str, bytes)
+                    v, (int, float, bool, np.integer, np.floating, np.bool_, str, bytes)
                 ):
                     if showicon:
                         file_str += self.inline_svg['object']
