@@ -666,7 +666,7 @@ class FAString(FastArray):
                 return TypeError(f"A single string must be passed for str2 not {str2!r}")
             str2 = FAString(str2)
        
-        return self._apply_func(self.nb_strstrb, self.nb_pstrstrb, str2, dtype=np.bool)
+        return self._apply_func(self.nb_strstrb, self.nb_pstrstrb, str2, dtype=np.bool_)
 
     # -----------------------------------------------------
     def startswith(self, str2):
@@ -689,7 +689,7 @@ class FAString(FastArray):
                 return TypeError(f"A single string must be passed for str2 not {str2!r}")
             str2 = FAString(str2)
        
-        return self._apply_func(self.nb_startswith, self.nb_pstartswith, str2, dtype=np.bool)
+        return self._apply_func(self.nb_startswith, self.nb_pstartswith, str2, dtype=np.bool_)
 
     # -----------------------------------------------------
     def endswith(self, str2):
@@ -712,7 +712,7 @@ class FAString(FastArray):
                 return TypeError(f"A single string must be passed for str2 not {str2!r}")
             str2 = FAString(str2)
 
-        return self._apply_func(self.nb_endswith, self.nb_endswith, str2, dtype=np.bool)
+        return self._apply_func(self.nb_endswith, self.nb_endswith, str2, dtype=np.bool_)
 
 
 # keep as last line
