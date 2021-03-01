@@ -4514,7 +4514,7 @@ class DateTimeNano(DateTimeBase, TimeStampBase, DateTimeCommon):
         --------
         DateTimeNano.random
         '''
-        inv = np.random.randint(0, 2, sz, dtype=np.bool)
+        inv = np.random.randint(0, 2, sz, dtype=np.bool_)
         return cls._random(sz, to_tz=to_tz, from_tz=from_tz, inv=inv, start=start, end=end)
 
     # -------------------------------------------------------------
