@@ -89,7 +89,7 @@ def get_dtype(val):
         final = val.dtype
     except:
         if isinstance(val,bool):
-            final = np.dtype(np.bool)
+            final = np.dtype(np.bool_)
 
         elif isinstance(val, int):
             val = abs(val)
@@ -726,7 +726,7 @@ def ismember(a, b, h=2, hint_size: int = 0, base_index: int = 0) -> Tuple[Union[
     is_multikey = False
 
     if len_a == 0 or len_b == 0:
-        return zeros(len(a), dtype=np.bool), full(len_a, INVALID_DICT[np.dtype(np.int32).num])
+        return zeros(len(a), dtype=np.bool_), full(len_a, INVALID_DICT[np.dtype(np.int32).num])
 
     if isinstance(a, TypeRegister.Categorical) or isinstance(b, TypeRegister.Categorical):
         if isinstance(a, TypeRegister.Categorical):
@@ -1899,7 +1899,7 @@ def where(condition, x=None, y=None):
         # punt to normal numpy since more than one dimension
         return LedgerFunction(np.where,condition,x,y)
 
-    if condition.dtype != np.bool:
+    if condition.dtype != np.bool_:
         #NOTE: believe numpy just flips it to boolean using astype, where object arrays handled differently with None and 0
         condition = condition != 0
 
@@ -2520,9 +2520,9 @@ def tile(arr, reps):
 # like in matlab, convert to int8
 def logical(a):
     if isinstance(a, np.ndarray):
-        if a.dtype==np.bool: return a
-        return a.astype(np.bool)
-    return np.bool(a).view(TypeRegister.FastArray)
+        if a.dtype==np.bool_: return a
+        return a.astype(np.bool_)
+    return np.bool_(a).view(TypeRegister.FastArray)
 
 ##-------------------------------------------------------
 # not allowed
@@ -2955,7 +2955,7 @@ def bitcount(a: Union[int, Sequence, np.array]) -> Union[int, np.array]:
         # check if we can use the fast routine
         if not isinstance(a, np.ndarray):
             a = np.asanyarray(a)
-        if np.issubdtype(a.dtype, np.integer) or a.dtype == np.bool:
+        if np.issubdtype(a.dtype, np.integer) or a.dtype == np.bool_:
             if not a.flags.c_contiguous:
                 a = a.copy()
             return rc.BitCount(a)
