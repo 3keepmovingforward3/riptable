@@ -1912,7 +1912,7 @@ class Categorical(GroupByOps, FastArray):
         if self.base_index == 1:
             return self._fa == 0
         else:
-            return zeros(len(self),dtype=np.bool)
+            return zeros(len(self),dtype=np.bool_)
 
     # ------------------------------------------------------------
     def set_name(self, name):
@@ -3092,7 +3092,7 @@ class Categorical(GroupByOps, FastArray):
         elif self.isenum:
             return self.grouping.isin(x)
 
-        elif isinstance(values, (bool, np.bool, bytes, str, int, np.integer, float, np.floating)):
+        elif isinstance(values, (bool, np.bool_, bytes, str, int, np.integer, float, np.floating)):
             x = np.array([x])
         # numpy will find the common dtype (strings will always win)
         elif isinstance(x, (list, tuple)):
