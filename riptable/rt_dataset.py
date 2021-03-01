@@ -328,7 +328,7 @@ class Dataset(Struct):
                     if c == 'O':
                         # make sure, scalar type so no python objects like dicts come through
                         # try float, but most objects will flip to bytes or unicode
-                        if isinstance(v[0], (str, np.str, bytes, np.bytes_, int, float, bool, np.integer, np.floating, np.bool)):
+                        if isinstance(v[0], (str, np.str, bytes, np.bytes_, int, float, bool, np.integer, np.floating, np.bool_)):
                             try:
                                 # attempt to autodetect based on first element
                                 # NOTE: if the first element is a float and Nan.. does that mean keep looking?
@@ -339,8 +339,8 @@ class Dataset(Struct):
                                     v=v.astype('S')
                                 elif isinstance(v[0], (int, np.integer)):
                                     v=v.astype(np.int64)
-                                elif isinstance(v[0], (bool, np.bool)):
-                                    v=v.astype(np.bool)
+                                elif isinstance(v[0], (bool, np.bool_)):
+                                    v=v.astype(np.bool_)
                                 else:
                                     v = v.astype(np.float64)
                             except:
@@ -2726,7 +2726,7 @@ class Dataset(Struct):
             return any(_col_any(_val) for _cn, _val in self.items())
         if axis == 1:
             # for each col,  !=0 to get back bool array.  then inplace OR all those results, careful with string arrays
-            temparray=zeros(len(self), dtype=np.bool)
+            temparray=zeros(len(self), dtype=np.bool_)
             for arr in self.values():
                 if arr.dtype.num <= 13:
                     # inplace OR for numerical data
@@ -2790,7 +2790,7 @@ class Dataset(Struct):
         ifirstgroup= g['iFirstGroup']
         ncountgroup = g['nCountGroup']
 
-        result = ones(igroup.shape, dtype=np.bool)
+        result = ones(igroup.shape, dtype=np.bool_)
 
         # return row of first occurrence
         if keep == 'first':
@@ -3017,7 +3017,7 @@ class Dataset(Struct):
             return all(_col_all(_val) for _cn, _val in self.items())
         if axis == 1:
             # for each col,  !=0 to get back bool array.  then inplace AND all those results, careful with string arrays
-            temparray=ones(len(self), dtype=np.bool)
+            temparray=ones(len(self), dtype=np.bool_)
             for arr in self.values():
                 if arr.dtype.num <= 13:
                     # inplace AND for numerical data
