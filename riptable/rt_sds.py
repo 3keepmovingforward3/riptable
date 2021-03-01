@@ -1212,10 +1212,10 @@ def _convert_to_mask(filter):
             # convert fancy index to bool
             if len(filter) > 0:
                 maxval = np.max(filter)
-                mask = zeros(maxval + 1, dtype=np.bool)
+                mask = zeros(maxval + 1, dtype=np.bool_)
                 mask[filter] = True
             else:
-                mask = zeros(0, dtype=np.bool)
+                mask = zeros(0, dtype=np.bool_)
             return mask
     else:
         raise TypeError(f'The filter must be a numpy array of booleans or integers not {type(filter)}.')
