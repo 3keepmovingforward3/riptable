@@ -1250,7 +1250,7 @@ class Grouping:
             if isinstance(values, list):
                 # nothing passed in list?
                 if len(values) == 0:
-                    return zeros(result_len, dtype=np.bool), None
+                    return zeros(result_len, dtype=np.bool_), None
 
                 # make separate arrays from each tuple index (rotate)
                 # how much error checking should happen here?
@@ -1266,7 +1266,7 @@ class Grouping:
 
             else:
                 # not found
-                mask = zeros(result_len, dtype=np.bool)
+                mask = zeros(result_len, dtype=np.bool_)
                 et = empty(len(values), dtype=np.int32)
                 et.fill_invalid()
                 return mask, et
