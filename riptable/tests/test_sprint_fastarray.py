@@ -16,7 +16,7 @@ from math import isclose
 
 float_types = [np.float32, np.float64]
 int_types = [
-    np.bool,
+    np.bool_,
     np.int8,
     np.uint8,
     np.int16,
@@ -351,7 +351,7 @@ class FastArray_Test(unittest.TestCase):
         si64 = NumpyCharTypes.SignedInteger64
         f64 = NumpyCharTypes.Float64
         input_types = [
-            np.bool,
+            np.bool_,
             np.int8,
             np.uint8,
             np.int16,
